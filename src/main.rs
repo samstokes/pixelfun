@@ -1,18 +1,50 @@
-use std::{convert::TryInto, f32::consts::PI, fmt::Display, time::Instant};
+use std::{
+    convert::TryInto, env::args, f32::consts::PI, fmt::Display, str::FromStr, time::Instant,
+};
 
 use pixel_canvas::{Canvas, Color, Image, XY};
 
 const SPEED: usize = 10;
 const SPIN: usize = 3;
 const SIZE_PX: usize = 512;
-const HIDPI: bool = true;
+const HIDPI: bool = false;
 const ANIMATE: bool = true;
 const PX_PER_PX: usize = if HIDPI { 2 } else { 1 };
 const REAL_SIZE_PX: usize = SIZE_PX * PX_PER_PX;
 const TEX_HEIGHT: usize = REAL_SIZE_PX;
 const TEX_WIDTH: usize = REAL_SIZE_PX;
 
+#[derive(Eq, PartialEq)]
+enum Which {
+    Effect,
+    Texture,
+    Distance,
+    Angle,
+}
+
+impl FromStr for Which {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "e" | "eff" | "effect" => Ok(Which::Effect),
+            "t" | "tex" | "texture" => Ok(Which::Texture),
+            "d" | "dist" | "distance" => Ok(Which::Distance),
+            "a" | "ang" | "angle" => Ok(Which::Angle),
+            _ => Err(format!("{} not recognised", s)),
+        }
+    }
+}
+
+impl Default for Which {
+    fn default() -> Self {
+        Which::Effect
+    }
+}
+
 fn main() {
+    let which = parse_args().expect("invalid args");
+
     let canvas = Canvas::new(SIZE_PX, SIZE_PX)
         .title("hey")
         .hidpi(HIDPI)
@@ -31,7 +63,10 @@ fn main() {
     canvas.render(move |_sploot, image| {
         let elapsed = (then.elapsed().as_millis() / 100) as usize;
 
-        //image.clone_from_slice(&tex); // draw texture
+        if which == Which::Texture {
+            image.clone_from_slice(&tex);
+            return;
+        }
 
         let width = image.width();
         let height = image.height();
@@ -44,9 +79,12 @@ fn main() {
 
                 let texel = tex[XY(angle, dist)];
 
-                //*pixel = grey("distance", dist, TEX_HEIGHT); // draw distance map
-                //*pixel = grey("angle", angle, TEX_WIDTH); // draw angle map
-                *pixel = texel; // draw actual effect
+                *pixel = match which {
+                    Which::Distance => grey("distance", dist, TEX_HEIGHT),
+                    Which::Angle => grey("angle", angle, TEX_WIDTH),
+                    Which::Effect => texel,
+                    _ => unreachable!(),
+                };
             }
         }
 
@@ -67,6 +105,17 @@ fn main() {
         //}
         //}
     });
+}
+
+fn parse_args() -> Result<Which, String> {
+    let mut args = args();
+    if args.len() > 2 {
+        return Err("too many args".into());
+    }
+    match args.nth(1) {
+        Some(arg) => Which::from_str(&arg),
+        None => Ok(Which::default()),
+    }
 }
 
 fn render_texture(width: usize, height: usize) -> Image {
