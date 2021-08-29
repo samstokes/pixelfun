@@ -1,13 +1,11 @@
-use std::{
-    convert::TryInto, env::args, f32::consts::PI, fmt::Display, str::FromStr, time::Instant,
-};
+use std::{convert::TryInto, env::args, f32::consts::PI, str::FromStr, time::Instant};
 
-use pixel_canvas::{Canvas, Color, Image, XY};
+use pixel_canvas::{input::MouseState, Canvas, Color, Image, XY};
 
 const SPEED: usize = 10;
 const SPIN: usize = 3;
 const SIZE_PX: usize = 512;
-const HIDPI: bool = false;
+const HIDPI: bool = true;
 const ANIMATE: bool = true;
 const PX_PER_PX: usize = if HIDPI { 2 } else { 1 };
 const REAL_SIZE_PX: usize = SIZE_PX * PX_PER_PX;
@@ -48,7 +46,8 @@ fn main() {
     let canvas = Canvas::new(SIZE_PX, SIZE_PX)
         .title("hey")
         .hidpi(HIDPI)
-        .render_on_change(!ANIMATE);
+        .state(MouseState::new())
+        .input(MouseState::handle_input);
 
     let tex = render_texture(TEX_HEIGHT, TEX_WIDTH);
 
@@ -60,16 +59,43 @@ fn main() {
 
     let then = Instant::now();
 
-    canvas.render(move |_sploot, image| {
-        let elapsed = (then.elapsed().as_millis() / 100) as usize;
+    let mut lastpos = (0, 0);
+
+    canvas.render(move |mouse, image| {
+        let width = image.width();
+        let height = image.height();
+
+        let elapsed = if ANIMATE {
+            (then.elapsed().as_millis() / 20) as usize
+        } else {
+            0
+        };
+
+        let pos = mousenorm(&mouse, height);
+        if pos != lastpos {
+            let mouseoffset = pos.1 * width + pos.0;
+            let mousetex = tex[XY(pos.0 % TEX_WIDTH, pos.1 % TEX_HEIGHT)];
+            let mouseang = anglemap[mouseoffset];
+            let mousedist = distancemap[mouseoffset];
+            println!(
+                "mouse: {:?}, tex: {:?}, ang: {}, dist: {}",
+                pos,
+                (mousetex.r, mousetex.g, mousetex.b),
+                mouseang,
+                mousedist
+            );
+            lastpos = pos;
+        }
 
         if which == Which::Texture {
-            image.clone_from_slice(&tex);
+            let rows = image.chunks_mut(width);
+            let tex_rows = tex.chunks(TEX_WIDTH);
+            for (row, tex_row) in rows.zip(tex_rows) {
+                row[0..TEX_WIDTH].clone_from_slice(tex_row);
+            }
             return;
         }
 
-        let width = image.width();
-        let height = image.height();
         for (y, row) in image.chunks_mut(width).enumerate() {
             for (x, pixel) in row.iter_mut().enumerate() {
                 let mapoffset = y * width + x;
@@ -141,7 +167,9 @@ fn calculate_mapping(
     let wf = width as f32;
     let hf = height as f32;
     let twf = texwidth as f32;
+    let half_twf = 0.5 * twf;
     let thf = texheight as f32;
+    let ratio_thf = RATIO * thf;
 
     let mut distmap = vec![0; width * height];
     let mut anglemap = vec![0; width * height];
@@ -155,10 +183,11 @@ fn calculate_mapping(
             let y_center = yf - hf * 0.5;
 
             distmap[y * width + x] =
-                (RATIO * thf / (x_center * x_center + y_center * y_center).sqrt()) as usize
+                (ratio_thf / (x_center * x_center + y_center * y_center).sqrt()) as usize
                     % texheight;
 
-            anglemap[y * width + x] = (twf * y_center.atan2(x_center) / PI) as usize;
+            anglemap[y * width + x] =
+                (half_twf * (1.0 + y_center.atan2(x_center) / PI)) as usize % texwidth;
         }
     }
 
@@ -199,4 +228,11 @@ fn grey(_label: &str, value: usize, max: usize) -> Color {
     //label, value, max, value, max, intensity
     //);
     Color::rgb(intensity, intensity, intensity)
+}
+
+fn mousenorm(mouse: &MouseState, height: usize) -> (usize, usize) {
+    return (
+        (mouse.x / 2) as usize,
+        ((mouse.y + height as i32) / 2) as usize,
+    );
 }
