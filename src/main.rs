@@ -9,6 +9,8 @@ const HIDPI: bool = true;
 const ANIMATE: bool = true;
 const PX_PER_PX: usize = if HIDPI { 2 } else { 1 };
 const REAL_SIZE_PX: usize = SIZE_PX * PX_PER_PX;
+const MAPFACTOR: usize = 2;
+const MAPPING_SIZE_PX: usize = REAL_SIZE_PX * MAPFACTOR;
 const TEX_HEIGHT: usize = REAL_SIZE_PX;
 const TEX_WIDTH: usize = REAL_SIZE_PX;
 
@@ -52,10 +54,16 @@ fn main() {
     let tex = render_texture(TEX_HEIGHT, TEX_WIDTH);
 
     let (distancemap, anglemap) =
-        calculate_mapping(REAL_SIZE_PX, REAL_SIZE_PX, TEX_HEIGHT, TEX_WIDTH);
+        calculate_mapping(MAPPING_SIZE_PX, MAPPING_SIZE_PX, TEX_HEIGHT, TEX_WIDTH);
 
-    sample_map("distance", &distancemap, 10, REAL_SIZE_PX, REAL_SIZE_PX);
-    sample_map("angle", &anglemap, 10, REAL_SIZE_PX, REAL_SIZE_PX);
+    sample_map(
+        "distance",
+        &distancemap,
+        10,
+        MAPPING_SIZE_PX,
+        MAPPING_SIZE_PX,
+    );
+    sample_map("angle", &anglemap, 10, MAPPING_SIZE_PX, MAPPING_SIZE_PX);
 
     let then = Instant::now();
 
@@ -96,9 +104,18 @@ fn main() {
             return;
         }
 
+        let half_wf = width as f32 * 0.5;
+        let qu_wf = width as f32 * 0.25;
+        let half_hf = height as f32 * 0.5;
+        let qu_hf = height as f32 * 0.25;
+        let elapsedf = elapsed as f32 * 0.005;
+
         for (y, row) in image.chunks_mut(width).enumerate() {
             for (x, pixel) in row.iter_mut().enumerate() {
-                let mapoffset = y * width + x;
+                let shift_x = (half_wf + qu_wf * (elapsedf * 2.0).sin()) as usize;
+                let shift_y = (half_hf + qu_hf * (elapsedf * 4.5).sin()) as usize;
+
+                let mapoffset = (y + shift_y) * (width * MAPFACTOR) + (x + shift_x);
 
                 let angle = (anglemap[mapoffset] + SPIN * elapsed) % TEX_WIDTH;
                 let dist = (distancemap[mapoffset] + SPEED * elapsed) % TEX_HEIGHT;
